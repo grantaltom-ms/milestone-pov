@@ -62,6 +62,22 @@ export async function lookupProperty(
 
   const propNorm = normalise(propertyName);
   const addrNorm = normalise(address);
+  const propTokens = propNorm.split(" ").filter(Boolean);
+
+  /**
+   * True when two property names agree from their first token onward — i.e.
+   * one is a leading token-prefix of the other ("UW Pacific" vs "UW Pacific
+   * Apartments"). We anchor on the leading token because a property's most
+   * distinctive identifier comes first, so this refuses to match a row that
+   * only shares a TRAILING word ("Pacific Apartments" vs "UW Pacific
+   * Apartments"), which a different building can easily collide on.
+   */
+  const isLeadingPrefix = (a: string[], b: string[]): boolean => {
+    const n = Math.min(a.length, b.length);
+    if (n === 0) return false;
+    for (let i = 0; i < n; i++) if (a[i] !== b[i]) return false;
+    return true;
+  };
 
   /**
    * Score a row against the parsed property. Higher = better. 0 = no match.
@@ -86,12 +102,17 @@ export async function lookupProperty(
     // Tier 3 — exact full address (street + city) match.
     if (rowFull && rowFull === addrNorm) return 300 + rowFull.length;
 
-    // Tier 2 — strong property-name substring match, either direction.
-    // Guard against trivially short names that could match many properties.
-    if (rowName.length >= 4) {
-      if (propNorm.includes(rowName)) return 200 + rowName.length;
-      if (rowName.includes(propNorm) && propNorm.length >= 4)
-        return 200 + propNorm.length;
+    // Tier 2 — strong property-name match: one name is a leading token-prefix
+    // of the other. Anchoring on the leading token (rather than a raw,
+    // position-agnostic substring) is what keeps a longer trailing fragment of
+    // a DIFFERENT property from hijacking the match — e.g. parsing "UW Pacific
+    // Apartments" must still resolve to the "UW Pacific" row, not a separate
+    // "Pacific Apartments" building whose name scored higher purely on length.
+    // We reward deeper prefix agreement so the most specific row still wins.
+    const rowTokens = rowName.split(" ").filter(Boolean);
+    if (rowName.length >= 4 && propNorm.length >= 4 &&
+        isLeadingPrefix(propTokens, rowTokens)) {
+      return 200 + Math.min(propTokens.length, rowTokens.length);
     }
 
     // Tier 1 — the tenant's address contains the row's street address.
