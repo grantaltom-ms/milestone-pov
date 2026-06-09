@@ -50,25 +50,67 @@ export async function lookupProperty(
   // Skip header row
   const dataRows = rows.slice(1);
 
-  const normalise = (s: string) => s.toLowerCase().trim();
+  // Normalise: lowercase, strip punctuation, collapse whitespace. This makes
+  // matching robust to differences like "U.W. Pacific" vs "UW Pacific" and
+  // stray double spaces between the PDF header and the sheet entry.
+  const normalise = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
   const propNorm = normalise(propertyName);
   const addrNorm = normalise(address);
 
-  const match = dataRows.find((row) => {
-    const rowName = normalise(row[1] ?? "");           // B: Property Name
-    const rowAddr = normalise(row[2] ?? "");           // C: Address
-    const rowCity = normalise(row[3] ?? "");           // D: City
-    const rowFull = `${rowAddr}, ${rowCity}`.trim();   // combined for address matching
+  /**
+   * Score a row against the parsed property. Higher = better. 0 = no match.
+   *
+   * We deliberately rank exact / strong matches above weak substring matches,
+   * and we do NOT match on city alone — many properties share a city, so a
+   * city-only match would return whichever such property happens to appear
+   * first in the sheet (the original bug: a Seattle tenant address matched the
+   * first Seattle row instead of its own property's row).
+   */
+  function scoreRow(row: string[]): number {
+    const rowName = normalise(row[1] ?? "");   // B: Property Name
+    const rowAddr = normalise(row[2] ?? "");   // C: Address
+    const rowCity = normalise(row[3] ?? "");   // D: City
+    const rowFull = normalise(`${row[2] ?? ""} ${row[3] ?? ""}`);
 
-    return (
-      rowName === propNorm ||
-      propNorm.includes(rowName) ||
-      rowName.includes(propNorm) ||
-      addrNorm.includes(rowAddr) ||
-      rowFull === addrNorm ||
-      addrNorm.includes(rowCity)
-    );
-  });
+    if (!rowName && !rowAddr) return 0;
+
+    // Tier 4 — exact property-name match (strongest signal).
+    if (rowName && rowName === propNorm) return 400 + rowName.length;
+
+    // Tier 3 — exact full address (street + city) match.
+    if (rowFull && rowFull === addrNorm) return 300 + rowFull.length;
+
+    // Tier 2 — strong property-name substring match, either direction.
+    // Guard against trivially short names that could match many properties.
+    if (rowName.length >= 4) {
+      if (propNorm.includes(rowName)) return 200 + rowName.length;
+      if (rowName.includes(propNorm) && propNorm.length >= 4)
+        return 200 + propNorm.length;
+    }
+
+    // Tier 1 — the tenant's address contains the row's street address.
+    // Require a reasonably specific street string to avoid false hits.
+    if (rowAddr.length >= 6 && addrNorm.includes(rowAddr))
+      return 100 + rowAddr.length;
+
+    return 0;
+  }
+
+  let match: string[] | undefined;
+  let bestScore = 0;
+  for (const row of dataRows) {
+    const score = scoreRow(row);
+    if (score > bestScore) {
+      bestScore = score;
+      match = row;
+    }
+  }
 
   if (!match) {
     throw new Error(
