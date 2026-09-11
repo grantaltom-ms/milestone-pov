@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { extractPages } from "./declaration";
 
 function getAuthClient() {
   const auth = new google.auth.OAuth2(
@@ -198,6 +199,18 @@ export async function replaceTextInDoc(
     documentId: docId,
     requestBody: { requests },
   });
+}
+
+/**
+ * Reads a document back from the Docs API and returns its text split into
+ * page-delimited chunks, for verifying that what was generated is complete.
+ */
+export async function fetchDocPages(docId: string): Promise<string[]> {
+  const auth = getAuthClient();
+  const docs = google.docs({ version: "v1", auth });
+
+  const response = await docs.documents.get({ documentId: docId });
+  return extractPages(response.data);
 }
 
 /**

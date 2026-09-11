@@ -9,8 +9,9 @@ Automated Pay or Vacate notice generation for Milestone Properties. Triggered by
 3. The property is matched against the Google Sheets mapping to get jurisdiction, notice days, and template
 4. City-specific compliance rules are applied (charge filtering, preflight checks)
 5. A Google Doc is copied from the template and filled with tenant/charge data
-6. A confirmation is posted to #delinq tagging the property manager
-7. The property manager receives a direct Slack DM with a link to the notice
+6. The finished doc is read back and checked for a complete Declaration of Service
+7. A confirmation is posted to #delinq tagging the property manager
+8. The property manager receives a direct Slack DM with a link to the notice
 
 ## Stack
 
@@ -32,7 +33,10 @@ lib/
   google.ts                   — Sheets lookup, Drive copy, Docs text replacement
   notice.ts                   — Charge filtering, totals calculation, placeholder map
   city-rules.ts               — Jurisdiction-specific compliance rules
+  declaration.ts              — Declaration of Service verification on the finished doc
   supabase.ts                 — Property manager lookup
+  declaration.test.ts         — Unit tests for the declaration check
+  notice-pipeline.test.ts     — End-to-end test: parse → notice → verification
 scripts/
   get-google-token.ts         — One-time Google OAuth refresh token helper
 ```
@@ -92,6 +96,43 @@ Templates use `<<PLACEHOLDER>>` style tags. The following are replaced on each r
 | `14-DAY` | Replaced with `{noticeDays}-DAY` |
 | `fourteen (14) days` | Replaced with written form, e.g. `thirty (30) days` |
 
+## Declaration of Service Check
+
+A notice is only servable if the manager can prove they served it, so every
+generated notice must end with a completed Declaration of Service page.
+
+**The generator never adds pages.** It copies a template and replaces
+placeholders — nothing more. So the declaration is present only because the
+template already carried it, and each jurisdiction has its own hand-maintained
+template. A template that never had the page, or that loses it in a later edit,
+would otherwise produce unservable notices silently.
+
+After filling in each notice, `lib/declaration.ts` reads the document back and
+confirms:
+
+| Check | Fails when |
+|---|---|
+| Declaration present | The template has no Declaration of Service at all |
+| It is the final page | Other content appears after the declaration |
+| A page break precedes it | It would print on the same page as the notice body |
+| It fits on one page | The form overflows — usually a template spacing problem |
+| All fields present | Perjury clause, who was served, service methods, signature, printed name, city of signing |
+| No leftover placeholders | A `<<TAG>>` survived because a replacement did not land |
+
+Anything wrong posts a red-flag warning in **both** the #delinq message and the
+manager's DM, naming the specific problem and telling them to fix the template
+and regenerate. **The notice is still created and linked** — a failed check
+never costs the manager the document, it just stops them printing a defective
+one unnoticed.
+
+If the read-back itself fails (a Docs API hiccup), the warning downgrades to
+"verify the final page by hand" rather than losing the notice.
+
+**One limitation worth knowing:** the Docs API only reports page breaks the
+template author actually inserted — it does not report pagination caused by
+content overflowing a page. So a template should separate its declaration with
+a real page break rather than relying on the notice happening to fill the page.
+
 ## City Compliance Rules
 
 Defined in `lib/city-rules.ts`. Key rules per jurisdiction:
@@ -138,6 +179,22 @@ npm run dev
 # Webhook available at http://localhost:3000/api/slack/events
 # Use ngrok or similar to expose locally for Slack testing
 ```
+
+### Checks
+
+```bash
+npm run lint         # ESLint
+npm run type-check   # tsc --noEmit
+npm test             # node --test (no external calls — all fixtures)
+npm run build        # next build
+```
+
+All four run in CI on every push and pull request (`.github/workflows/ci.yml`).
+
+The test suite covers the declaration check against the real RHAWA form text and
+runs the full parse → notice → verification flow for every jurisdiction, with
+Claude, Google, Slack and Supabase all stood in for by fixtures — so it is fast,
+free and deterministic.
 
 ## Getting a Google Refresh Token (first-time setup)
 
