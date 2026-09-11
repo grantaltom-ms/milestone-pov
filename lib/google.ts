@@ -12,6 +12,8 @@ function getAuthClient() {
 
 export interface PropertyRecord {
   noticeDays: string;
+  /** Column E. Gates generation — these forms are Washington-only. */
+  state: string;
   jurisdiction: string;
   templateDocId: string;
   city: string;
@@ -146,6 +148,7 @@ export async function lookupProperty(
   const ownerName     = match[9] ?? "";   // J
   const ownerAddress  = match[10] ?? "";  // K
   const city          = match[3] ?? "";   // D
+  const state         = match[4] ?? "";   // E
 
   if (!templateDocId) {
     throw new Error(
@@ -153,7 +156,7 @@ export async function lookupProperty(
     );
   }
 
-  return { noticeDays, jurisdiction, templateDocId, city, ownerName, ownerAddress };
+  return { noticeDays, state, jurisdiction, templateDocId, city, ownerName, ownerAddress };
 }
 
 /**
