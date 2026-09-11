@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "test": "node --test \"lib/*.test.ts\"",
+    "add-declaration": "node --env-file=.env.local scripts/add-declaration.ts",
     "get-google-token": "npx ts-node -e \"require('./scripts/get-google-token')\""
   },
   "dependencies": {

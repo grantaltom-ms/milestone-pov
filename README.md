@@ -34,11 +34,15 @@ lib/
   notice.ts                   — Charge filtering, totals calculation, placeholder map
   city-rules.ts               — Jurisdiction-specific compliance rules
   declaration.ts              — Declaration of Service verification on the finished doc
+  declaration-template.ts     — The declaration page the template script appends
   supabase.ts                 — Property manager lookup
   declaration.test.ts         — Unit tests for the declaration check
+  declaration-template.test.ts — Tests for the appended page and its index math
+  state-gate.test.ts          — Tests for the Washington-only gate
   notice-pipeline.test.ts     — End-to-end test: parse → notice → verification
 scripts/
   get-google-token.ts         — One-time Google OAuth refresh token helper
+  add-declaration.ts          — Adds the declaration page to the templates
 ```
 
 ## Environment Variables
@@ -132,6 +136,38 @@ If the read-back itself fails (a Docs API hiccup), the warning downgrades to
 template author actually inserted — it does not report pagination caused by
 content overflowing a page. So a template should separate its declaration with
 a real page break rather than relying on the notice happening to fill the page.
+
+## Adding the Declaration of Service to Templates
+
+`scripts/add-declaration.ts` appends the declaration page to the notice
+templates. It never edits a template in place — it copies each one, appends the
+declaration to the copy, verifies the result with the same checker that runs on
+every generated notice, and prints the links for review.
+
+```bash
+npm run add-declaration -- --dry-run   # list what it would do, change nothing
+npm run add-declaration                # make the copies
+# open each printed link, check the last page
+npm run add-declaration -- --promote   # repoint the mapping sheet at the copies
+```
+
+- Templates are discovered from column I of the mapping sheet, so the script
+  stays correct as properties are added.
+- A template that **already** has a declaration is skipped.
+- Re-running does not create duplicate copies — an existing copy is left alone.
+- `--promote` refuses to run if any copy failed verification.
+- Uses the same Google credentials as the app (`.env.local`); no extra scopes.
+
+`<<CITY_OF_SIGNING>>` is intentionally left in the appended page — the same
+replacement that fills the notice body's signature block fills it at generation
+time. That is why the script checks the declaration's *fields*, not its
+placeholders: a leftover tag is a fault on a finished notice, not on a template.
+
+**The appended page is not a pixel-for-pixel reproduction of the RHAWA form.**
+It carries the same substance — the perjury certification, the four statutory
+service methods, the mail method, and the signature block — but the layout
+differs. If the exact RHAWA form is required, paste it into each template by
+hand instead; the verification on every generated notice works either way.
 
 ## City Compliance Rules
 
