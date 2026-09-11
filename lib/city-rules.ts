@@ -165,3 +165,48 @@ export function getRulesForJurisdiction(jurisdiction: string): CityRules {
     ],
   };
 }
+
+/**
+ * The notice forms this tool generates are written to Washington's landlord-
+ * tenant statutes. Nonpayment notices in other states are governed by
+ * different law — California, for one, requires a three-day notice to pay or
+ * quit on its own form — so serving a Washington form outside Washington is
+ * not a formatting mismatch, it is an invalid notice.
+ *
+ * Column E of the mapping sheet is therefore a hard gate, not a label.
+ */
+const WASHINGTON = new Set(["wa", "washington"]);
+
+export interface StateCheck {
+  serviceable: boolean;
+  /** Plain-English explanation for the manager. Set only when not serviceable. */
+  reason?: string;
+}
+
+export function checkServiceableState(
+  state: string,
+  propertyName: string
+): StateCheck {
+  const trimmed = (state ?? "").trim();
+
+  // A blank state is unknown, not assumed-Washington: the stakes of guessing
+  // wrong are an unservable notice, and the fix is one cell in the sheet.
+  if (!trimmed) {
+    return {
+      serviceable: false,
+      reason:
+        `No state is set for "${propertyName}" in the mapping sheet (column E). ` +
+        `Fill it in before generating a notice — these forms are valid in Washington only.`,
+    };
+  }
+
+  if (WASHINGTON.has(trimmed.toLowerCase())) return { serviceable: true };
+
+  return {
+    serviceable: false,
+    reason:
+      `"${propertyName}" is in ${trimmed}, not Washington. These notice forms are ` +
+      `written to Washington law and are not valid in ${trimmed}, so no notice was ` +
+      `generated. Handle this property's nonpayment notice under ${trimmed} law instead.`,
+  };
+}

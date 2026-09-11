@@ -2,9 +2,10 @@ import { waitUntil } from "@vercel/functions";
 import { WebClient } from "@slack/web-api";
 import { verifySlackRequest } from "@/lib/slack-verify";
 import { parsePdfWithClaude } from "@/lib/claude";
-import { lookupProperty, copyTemplate, replaceTextInDoc, docUrl } from "@/lib/google";
+import { lookupProperty, copyTemplate, replaceTextInDoc, fetchDocPages, docUrl } from "@/lib/google";
 import { calculateTotals, formatCurrency, buildReplacements } from "@/lib/notice";
-import { getRulesForJurisdiction } from "@/lib/city-rules";
+import { getRulesForJurisdiction, checkServiceableState } from "@/lib/city-rules";
+import { verifyDeclarationOfService, declarationWarningText } from "@/lib/declaration";
 import { lookupManager } from "@/lib/supabase";
 
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -88,12 +89,42 @@ async function processNotice(fileId: string, channelId: string) {
     console.log(`Matched: ${propertyData.jurisdiction}, ${propertyData.noticeDays} days`);
     console.log(`Manager: ${manager?.manager_name ?? "not found"}`);
 
-    // --- Step 5: Resolve manager's Slack user ID ---
+    // --- Step 5: Refuse to generate outside Washington ---
+    // These forms are written to Washington law. Serving one on a property in
+    // another state is not a cosmetic mismatch — it is an invalid notice. Stop
+    // before any document is created so nothing printable exists to serve.
+    const stateCheck = checkServiceableState(propertyData.state, parsed.property);
+    if (!stateCheck.serviceable) {
+      console.warn(`Refusing to generate: ${stateCheck.reason}`);
+      await slack.chat.postMessage({
+        channel: channelId,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `:no_entry: *No notice generated — outside Washington*\n${stateCheck.reason}`,
+            },
+          },
+          {
+            type: "section",
+            fields: [
+              { type: "mrkdwn", text: `*Tenant:*\n${parsed.tenant_name}` },
+              { type: "mrkdwn", text: `*Property:*\n${parsed.property}` },
+              { type: "mrkdwn", text: `*Address:*\n${parsed.address}` },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+
+    // --- Step 6: Resolve manager's Slack user ID ---
     const managerSlackId = manager
       ? await getSlackUserId(manager.manager_email)
       : null;
 
-    // --- Step 6: Apply jurisdiction rules & calculate totals ---
+    // --- Step 7: Apply jurisdiction rules & calculate totals ---
     const rules = getRulesForJurisdiction(propertyData.jurisdiction);
     const totals = calculateTotals(parsed, rules);
 
@@ -103,14 +134,39 @@ async function processNotice(fileId: string, channelId: string) {
       );
     }
 
-    // --- Step 7: Copy template & replace placeholders ---
+    // --- Step 8: Copy template & replace placeholders ---
     const docTitle = `Pay or Vacate — ${parsed.tenant_name} — ${new Date().toLocaleDateString("en-US")}`;
     const newDocId = await copyTemplate(propertyData.templateDocId, docTitle);
     const replacements = buildReplacements(parsed, totals, propertyData);
     await replaceTextInDoc(newDocId, replacements);
     console.log("Text replacements applied.");
 
-    // --- Step 8: Build channel notification ---
+    // --- Step 9: Verify the finished notice is complete ---
+    // Notices are built by copying a per-jurisdiction Google Doc template, so a
+    // template missing its Declaration of Service silently produces unservable
+    // notices for every property pointed at it. Read the document back and say
+    // so loudly rather than letting a manager discover it at the courthouse.
+    let declarationWarning: string | null = null;
+    try {
+      const check = verifyDeclarationOfService(await fetchDocPages(newDocId));
+      declarationWarning = declarationWarningText(check);
+      console.log(
+        check.ok
+          ? "Declaration of Service verified."
+          : `Declaration check failed: ${check.problems.join(" | ")}`
+      );
+    } catch (err) {
+      // The notice itself was created successfully — a read-back failure must
+      // downgrade to "verify by hand", never cost the manager the document.
+      console.warn(
+        "Declaration check could not run:",
+        err instanceof Error ? err.message : String(err)
+      );
+      declarationWarning =
+        ":warning: *Could not verify the Declaration of Service on this notice* — check the final page by hand before serving.";
+    }
+
+    // --- Step 10: Build channel notification ---
     const preflightList = rules.requiredPreflightChecks.map((c) => `• ${c}`).join("\n");
     const excludedWarning =
       totals.excludedCharges.length > 0
@@ -148,6 +204,14 @@ async function processNotice(fileId: string, channelId: string) {
             text: `:clipboard: *Required Preflight Checks — ${propertyData.jurisdiction}*\n${preflightList}${excludedWarning}`,
           },
         },
+        ...(declarationWarning
+          ? [
+              {
+                type: "section" as const,
+                text: { type: "mrkdwn" as const, text: declarationWarning },
+              },
+            ]
+          : []),
         {
           type: "actions",
           elements: [
@@ -162,7 +226,7 @@ async function processNotice(fileId: string, channelId: string) {
       ],
     });
 
-    // --- Step 9: DM the manager ---
+    // --- Step 11: DM the manager ---
     if (managerSlackId) {
       await slack.chat.postMessage({
         channel: managerSlackId,
@@ -183,6 +247,16 @@ async function processNotice(fileId: string, channelId: string) {
               { type: "mrkdwn", text: `*Total Due:*\n${formatCurrency(totals.totalDue)}` },
             ],
           },
+          // The manager is the one who prints and serves this, so the warning
+          // has to reach them directly — not only the channel.
+          ...(declarationWarning
+            ? [
+                {
+                  type: "section" as const,
+                  text: { type: "mrkdwn" as const, text: declarationWarning },
+                },
+              ]
+            : []),
           {
             type: "actions",
             elements: [

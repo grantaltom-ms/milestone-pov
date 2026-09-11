@@ -2,12 +2,19 @@
   "name": "milestone-pov-tool",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "get-google-token": "npx ts-node -e \"require('./scripts/get-google-token')\"",
-    "type-check": "tsc --noEmit"
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit",
+    "test": "node --test \"lib/*.test.ts\"",
+    "add-declaration": "node --env-file=.env.local scripts/add-declaration.ts",
+    "get-google-token": "node --env-file=.env.local scripts/get-google-token.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
@@ -19,6 +26,8 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "19.2.14",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.25",
     "typescript": "^5.0.0"
   }
 }
