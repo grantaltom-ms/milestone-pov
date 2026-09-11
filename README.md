@@ -144,6 +144,9 @@ templates. It never edits a template in place — it copies each one, appends th
 declaration to the copy, verifies the result with the same checker that runs on
 every generated notice, and prints the links for review.
 
+Requires **Node 22.18 or newer** — the script and the test suite run TypeScript
+through Node directly, with no build step. Check with `node -v`.
+
 ```bash
 npm run add-declaration -- --dry-run   # list what it would do, change nothing
 npm run add-declaration                # make the copies
