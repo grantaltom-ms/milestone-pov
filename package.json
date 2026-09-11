@@ -2,6 +2,7 @@
   "name": "milestone-pov-tool",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=22.18.0"
   },
@@ -13,7 +14,7 @@
     "type-check": "tsc --noEmit",
     "test": "node --test \"lib/*.test.ts\"",
     "add-declaration": "node --env-file=.env.local scripts/add-declaration.ts",
-    "get-google-token": "npx ts-node -e \"require('./scripts/get-google-token')\""
+    "get-google-token": "node --env-file=.env.local scripts/get-google-token.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",

@@ -237,9 +237,17 @@ free and deterministic.
 
 ## Getting a Google Refresh Token (first-time setup)
 
+Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env.local` first — both
+are visible in Google Cloud Console under APIs & Services → Credentials. Then:
+
 ```bash
-# Make sure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are in .env.local
-npx ts-node scripts/get-google-token.ts
-# Open the URL, authorize, paste the code back
-# Add the printed GOOGLE_REFRESH_TOKEN to .env.local and Vercel env vars
+npm run get-google-token
 ```
+
+Open the printed URL, authorize, and the script prints a `GOOGLE_REFRESH_TOKEN`
+to add to `.env.local`.
+
+**Note:** environment variables marked *Sensitive* in Vercel cannot be read back
+out — `vercel env pull` writes `[SENSITIVE]` as a placeholder for them. If the
+Google values come down that way, mint a fresh refresh token with the command
+above rather than trying to recover the stored one.
