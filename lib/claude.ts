@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { CLAUDE_MODEL } from "./model.ts";
+import { CLAUDE_MODEL, THINKING_HEADROOM_TOKENS, responseText } from "./model.ts";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -44,7 +44,7 @@ export async function parsePdfWithClaude(
 ): Promise<ParsedNotice> {
   const message = await client.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 4096,
+    max_tokens: 4096 + THINKING_HEADROOM_TOKENS,
     messages: [
       {
         role: "user",
@@ -98,8 +98,7 @@ General rules:
     ],
   });
 
-  const text =
-    message.content[0].type === "text" ? message.content[0].text.trim() : "";
+  const text = responseText(message);
 
   // Strip any accidental markdown fences
   const clean = text.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "");
