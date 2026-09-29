@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { CLAUDE_MODEL } from "./model.ts";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -42,7 +43,7 @@ export async function parsePdfWithClaude(
   pdfBase64: string
 ): Promise<ParsedNotice> {
   const message = await client.messages.create({
-    model: "claude-opus-4-6",
+    model: CLAUDE_MODEL,
     max_tokens: 4096,
     messages: [
       {
