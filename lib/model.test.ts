@@ -9,7 +9,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { CLAUDE_MODEL } from "./model.ts";
+import { CLAUDE_MODEL, responseText } from "./model.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -67,7 +67,9 @@ describe("parsePdfWithClaude against a fake Claude API", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
           id: `msg_${seen.length}`, type: "message", role: "assistant", model: parsed.model,
-          content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 },
+          // Like real Sonnet 5.5: a thinking block comes BEFORE the answer.
+          content: [{ type: "thinking", thinking: "", signature: "test-signature" }, { type: "text", text }],
+          stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 },
         }));
       });
     });
@@ -91,5 +93,15 @@ describe("parsePdfWithClaude against a fake Claude API", () => {
       assert.equal(call.model, "claude-sonnet-5-5");
       assert.equal(call.hasPdf, true);
     }
+  });
+});
+
+describe("responseText (Sonnet 5.5 reply shape)", () => {
+  test("skips a leading thinking block", () => {
+    assert.equal(responseText({ content: [{ type: "thinking" }, { type: "text", text: "{}" }] }), "{}");
+  });
+  test("returns an empty string, never undefined, when there is no text", () => {
+    assert.equal(responseText({ content: [{ type: "thinking" }] }), "");
+    assert.equal(responseText({}), "");
   });
 });
