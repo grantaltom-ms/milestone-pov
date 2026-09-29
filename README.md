@@ -16,7 +16,7 @@ Automated Pay or Vacate notice generation for Milestone Properties. Triggered by
 ## Stack
 
 - **Next.js** (App Router) on Vercel — serverless API route
-- **Claude API** (claude-opus-4-6) — PDF parsing and charge categorization
+- **Claude API** (claude-sonnet-5-5, set in `lib/model.ts`) — PDF parsing and charge categorization
 - **Google Sheets** — property mapping (jurisdiction, notice days, template Doc ID, owner info)
 - **Google Drive + Docs API** — template copying and text replacement
 - **Slack API** — event trigger, channel notification, manager DM
